@@ -5,6 +5,7 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
+- `waitForConfirmation(rpcUrl, txHash, options?)` (exported from the package root) — a standalone poll-until-confirmed helper for transactions submitted outside `StreamsModule`. Resolves with `{ hash, returnValue }` on success; rejects on failure, with `ConfirmationTimeoutError` on timeout, and with an `AbortError` when `options.signal` aborts. `invokeContract` and `StreamsModule` now share the same underlying poll loop instead of each keeping a copy, with no change to their behavior (#799).
 - `NETWORK_NAMES`, `EXPLORER_URLS`, and `NetworkType` provide shared human-readable Stellar network labels and Stellar Expert transaction, contract, and account URL bases (#832).
 - `TokenModule` exposes SEP-41 `allowance()` and `approve()` operations through `client.tokens`, and `@streamfi/react` now exports `useTokenAllowance()` for allowance verification and approval state (#851).
 - `timeoutSignal(ms)` utility (exported from the package root and `/utils`) — a portable `AbortSignal` that aborts after `ms`, using the native `AbortSignal.timeout()` when available and falling back to `AbortController` + `setTimeout` (with `unref()` on Node) otherwise. Pass it as `signal` to any method that accepts one (#634).
