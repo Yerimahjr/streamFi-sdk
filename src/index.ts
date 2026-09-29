@@ -95,6 +95,7 @@ export {
    parseDuration,
    validateAndNormalizeAddress,
    isValidAddress,
+   formatTokenAmount,
  } from './utils.js';
 
 // Constants
