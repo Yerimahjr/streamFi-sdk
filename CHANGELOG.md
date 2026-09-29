@@ -5,6 +5,8 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
+- `@streamfi/react`: `useNetworkSwitcher()` hook and reactive network switching in `StreamFiProvider` (`network`, `setNetwork`, `isSupportedNetwork`, `availableNetworks`), allowing dApps to switch between Stellar networks seamlessly without remounting or managing out-of-band state (#833).
+- `ConduitClient.network` getter returning the active configured network (`Network`).
 - `NETWORK_NAMES`, `EXPLORER_URLS`, and `NetworkType` provide shared human-readable Stellar network labels and Stellar Expert transaction, contract, and account URL bases (#832).
 - `TokenModule` exposes SEP-41 `allowance()` and `approve()` operations through `client.tokens`, and `@streamfi/react` now exports `useTokenAllowance()` for allowance verification and approval state (#851).
 - `FactoryModule.streamAddresses(ids[], signal?, options?)` resolves a page of stream IDs to contract addresses in one call, returning a `Map` keyed by decimal stream-id string (`null` for ids the contract reports as not-found). Rendering a page of `streamsBySender()` results no longer costs one simulated RPC round trip per row on a cold cache: duplicate and string/bigint id forms are de-duplicated, only the cache-miss subset is fetched, and in-flight simulations are bounded by `options.maxConcurrency` (default 8) to match a default `stellar-rpc`'s 8 preflight workers. Every id is resolved through `streamAddress()`, so the address cache, its hit/miss counters and the negative-cache TTL are shared with single-id lookups; a resolution that throws propagates and is never cached as a not-found result. `StreamAddressesOptions` is exported from the package entry point (#783).

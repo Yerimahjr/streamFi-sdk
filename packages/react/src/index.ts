@@ -69,3 +69,5 @@ export type {
   ApproveTokenAllowanceFn,
   UseTokenAllowanceResult,
 } from './hooks/useTokenAllowance.js';
+export { useNetworkSwitcher } from './hooks/useNetworkSwitcher.js';
+export type { UseNetworkSwitcherResult } from './hooks/useNetworkSwitcher.js';
