@@ -88,6 +88,8 @@ export {
    normalizeProgress,
    withdrawableLocal,
    sumWithdrawable,
+   streamedTotalLocal,
+   sumStreamedTotal,
    bigintSafeStringify,
    timeoutSignal,
    streamStatus,
