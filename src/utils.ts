@@ -174,6 +174,38 @@ export function withdrawableLocal(stream: StreamInfo, nowSec = Math.floor(Date.n
 }
 
 /**
+ * Cumulative amount streamed since the stream started, from a StreamInfo
+ * snapshot, without a contract call. The local counterpart of
+ * `StreamsModule.streamedTotal()`.
+ *
+ * Unlike {@link withdrawableLocal}, `withdrawn` is not subtracted, so the
+ * value keeps counting up after withdrawals. Accounts for pause state and
+ * `endTime` with the same clamp order as {@link withdrawableLocal}.
+ *
+ * `StreamInfo` does not record when a stream was cancelled, so the amount
+ * streamed up to that moment cannot be projected. A cancelled stream
+ * therefore reports `withdrawn`, the amount known to have been paid out (a
+ * lower bound), instead of continuing to accrue.
+ */
+export function streamedTotalLocal(stream: StreamInfo, nowSec = Math.floor(Date.now() / 1000)): bigint {
+  if (stream.cancelled) return stream.withdrawn;
+
+  // Same clamp order as `withdrawableLocal` (see the note there): `endTime`
+  // first, then freeze at `pausedAt` only while the stream is still running.
+  const endClamped =
+    stream.endTime > 0 && nowSec > stream.endTime ? stream.endTime : nowSec;
+  const effectiveNow =
+    stream.paused && stream.pausedAt < endClamped ? stream.pausedAt : endClamped;
+
+  if (effectiveNow < stream.startTime) return 0n;
+
+  const elapsed = effectiveNow - stream.startTime;
+  if (elapsed <= 0) return 0n;
+
+  return stream.ratePerSecond * BigInt(elapsed);
+}
+
+/**
  * Classifies a stream's current lifecycle state.
  *
  * Precedence mirrors the on-chain clamp order used by {@link withdrawableLocal}:
@@ -410,6 +442,22 @@ export function validateAndNormalizeAddress(address: string): { isValid: boolean
  */
 export function sumWithdrawable(streams: StreamInfo[], nowSec = Math.floor(Date.now() / 1000)): bigint {
   return streams.reduce((sum, stream) => sum + withdrawableLocal(stream, nowSec), 0n);
+}
+
+/**
+ * Sum of the cumulative amounts streamed across multiple streams.
+ *
+ * Computes the total amount streamed so far from an array of streams without
+ * making any contract calls, using {@link streamedTotalLocal} for each one.
+ * Unlike {@link sumWithdrawable}, withdrawals are not subtracted, so the total
+ * keeps counting up after recipients withdraw.
+ *
+ * @param streams Array of StreamInfo objects
+ * @param nowSec  Current time in seconds (defaults to now)
+ * @returns Total streamed amount in stroops across all streams
+ */
+export function sumStreamedTotal(streams: StreamInfo[], nowSec = Math.floor(Date.now() / 1000)): bigint {
+  return streams.reduce((sum, stream) => sum + streamedTotalLocal(stream, nowSec), 0n);
 }
 
 /**

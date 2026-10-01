@@ -508,7 +508,7 @@ deployed `DripGovernor` values for production use.
 
 ```typescript
 import { toStroops, fromStroops, calculateRate, streamProgress, withdrawableLocal,
-  bigintSafeStringify, isValidAddress }
+  streamedTotalLocal, sumWithdrawable, sumStreamedTotal, bigintSafeStringify, isValidAddress }
   from '@conduit-protocol/sdk/utils';
 
 toStroops('100.5')             // → 1005000000n
@@ -516,9 +516,14 @@ fromStroops(1005000000n)       // → '100.5'
 calculateRate('1000', 2592000) // → 3858n  stroops/sec
 streamProgress(streamInfo)     // → 0.42   (0–1 fraction elapsed)
 withdrawableLocal(streamInfo)  // → bigint (client-side estimate, no RPC call)
+streamedTotalLocal(streamInfo) // → bigint (cumulative streamed, ignores withdrawals)
+sumWithdrawable(streams)       // → bigint (withdrawable across many streams)
+sumStreamedTotal(streams)      // → bigint (streamed total across many streams)
 ```
 
 `withdrawableLocal` is useful for building live counters without polling the chain on every render tick.
+
+`streamedTotalLocal` and `sumStreamedTotal` are the local counterparts of `streamedTotal()`: they do not subtract `withdrawn`, so a "total streamed so far" display keeps counting up after withdrawals. `StreamInfo` has no cancellation time, so a cancelled stream reports its `withdrawn` amount (a lower bound) rather than continuing to accrue.
 
 `toStroops`, `fromStroops`, `calculateRate`, and `calculateYield` use a precomputed `POW10`
 lookup table for decimal values 0–19, avoiding repeated `BigInt(10 ** decimals)` computation

@@ -10,6 +10,8 @@ import {
   normalizeProgress,
   withdrawableLocal,
   sumWithdrawable,
+  streamedTotalLocal,
+  sumStreamedTotal,
   bigintSafeStringify,
   isValidAddress,
   formatTokenAmount,
@@ -391,6 +393,145 @@ describe('sumWithdrawable', () => {
     // Sum at baseTime + 100 (100 more seconds elapsed)
     const later = sumWithdrawable(streams, baseTime + 100);
     // Each stream should have 100 more stroops (rate × 100)
+    expect(later - atBase).toBe((100n + 200n) * 100n);
+  });
+});
+
+// ── streamedTotalLocal ───────────────────────────────────────────────────────
+
+describe('streamedTotalLocal', () => {
+  it('returns 0 before stream starts', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const s   = makeStream({ startTime: now + 100, endTime: now + 3700 });
+    expect(streamedTotalLocal(s, now)).toBe(0n);
+  });
+
+  it('equals rate × elapsed', () => {
+    const now  = Math.floor(Date.now() / 1000);
+    const rate = 100n;
+    const s    = makeStream({ ratePerSecond: rate, startTime: now - 500, endTime: now + 500 });
+    expect(streamedTotalLocal(s, now)).toBe(rate * 500n);
+  });
+
+  it('does not subtract withdrawn amounts', () => {
+    const now  = Math.floor(Date.now() / 1000);
+    const rate = 100n;
+    const s    = makeStream({ ratePerSecond: rate, startTime: now - 1000, withdrawn: 50_000n });
+    expect(streamedTotalLocal(s, now)).toBe(rate * 1000n);
+    // ...whereas the withdrawable balance does.
+    expect(withdrawableLocal(s, now)).toBe(rate * 1000n - 50_000n);
+  });
+
+  it('caps at end_time', () => {
+    const now  = Math.floor(Date.now() / 1000);
+    const rate = 100n;
+    const s    = makeStream({ ratePerSecond: rate, startTime: now - 2000, endTime: now - 1000 });
+    expect(streamedTotalLocal(s, now)).toBe(rate * 1000n);
+  });
+
+  it('keeps accruing for an open-ended stream (endTime 0)', () => {
+    const now  = Math.floor(Date.now() / 1000);
+    const rate = 100n;
+    const s    = makeStream({ ratePerSecond: rate, startTime: now - 1000, endTime: 0 });
+    expect(streamedTotalLocal(s, now)).toBe(rate * 1000n);
+  });
+
+  it('freezes at pausedAt when paused', () => {
+    const now  = Math.floor(Date.now() / 1000);
+    const rate = 100n;
+    const s = makeStream({
+      ratePerSecond: rate,
+      startTime:     now - 1000,
+      endTime:       now + 1000,
+      paused:        true,
+      pausedAt:      now - 500,
+    });
+    expect(streamedTotalLocal(s, now)).toBe(rate * 500n);
+  });
+
+  it('a stream paused *after* end_time has fully streamed (matches on-chain clamp order)', () => {
+    const now  = Math.floor(Date.now() / 1000);
+    const rate = 100n;
+    const s = makeStream({
+      ratePerSecond: rate,
+      startTime:     now - 3000,
+      endTime:       now - 2000,
+      paused:        true,
+      pausedAt:      now - 500,
+    });
+    expect(streamedTotalLocal(s, now)).toBe(rate * 1000n);
+  });
+
+  it('returns withdrawn (a lower bound) for a cancelled stream instead of accruing', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const s   = makeStream({ startTime: now - 1000, cancelled: true, withdrawn: 25_000n });
+    expect(streamedTotalLocal(s, now)).toBe(25_000n);
+    expect(streamedTotalLocal(s, now + 500)).toBe(25_000n);
+  });
+
+  it('agrees with withdrawableLocal: streamed total minus withdrawn', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const streams = [
+      makeStream({ ratePerSecond: 100n, startTime: now - 1000, endTime: now + 1000, withdrawn: 30_000n }),
+      makeStream({ ratePerSecond: 200n, startTime: now - 1000, endTime: now + 1000, paused: true, pausedAt: now - 400 }),
+      makeStream({ ratePerSecond: 50n, startTime: now - 2000, endTime: now - 1000, withdrawn: 10_000n }),
+      makeStream({ ratePerSecond: 100n, startTime: now + 100, endTime: now + 1000 }),
+    ];
+    for (const s of streams) {
+      const diff = streamedTotalLocal(s, now) - s.withdrawn;
+      expect(withdrawableLocal(s, now)).toBe(diff > 0n ? diff : 0n);
+    }
+  });
+});
+
+// ── sumStreamedTotal ─────────────────────────────────────────────────────────
+
+describe('sumStreamedTotal', () => {
+  it('returns 0 for empty array', () => {
+    expect(sumStreamedTotal([])).toBe(0n);
+  });
+
+  it('sums streamed totals across multiple active streams', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const streams = [
+      makeStream({ ratePerSecond: 100n, startTime: now - 1000, endTime: now + 1000 }),
+      makeStream({ ratePerSecond: 200n, startTime: now - 500, endTime: now + 1500 }),
+      makeStream({ ratePerSecond: 50n, startTime: now - 2000, endTime: now + 500 }),
+    ];
+    const expected = (100n * 1000n) + (200n * 500n) + (50n * 2000n);
+    expect(sumStreamedTotal(streams, now)).toBe(expected);
+  });
+
+  it('does not subtract withdrawn amounts, unlike sumWithdrawable', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const streams = [
+      makeStream({ ratePerSecond: 100n, startTime: now - 1000, endTime: now + 1000, withdrawn: 50_000n }),
+      makeStream({ ratePerSecond: 200n, startTime: now - 500, endTime: now + 1500, withdrawn: 75_000n }),
+    ];
+    expect(sumStreamedTotal(streams, now)).toBe((100n * 1000n) + (200n * 500n));
+    expect(sumWithdrawable(streams, now)).toBe((100n * 1000n - 50_000n) + (200n * 500n - 75_000n));
+  });
+
+  it('handles mixed stream states (active, paused, completed, cancelled)', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const streams = [
+      makeStream({ ratePerSecond: 100n, startTime: now - 1000, endTime: now + 1000 }),
+      makeStream({ ratePerSecond: 200n, startTime: now - 1000, endTime: now + 1000, paused: true, pausedAt: now - 500 }),
+      makeStream({ ratePerSecond: 50n, startTime: now - 2000, endTime: now - 1000 }),
+      makeStream({ ratePerSecond: 999n, startTime: now - 1000, endTime: now + 1000, cancelled: true, withdrawn: 1_000n }),
+    ];
+    const expected = (100n * 1000n) + (200n * 500n) + (50n * 1000n) + 1_000n;
+    expect(sumStreamedTotal(streams, now)).toBe(expected);
+  });
+
+  it('reflects time progression', () => {
+    const baseTime = Math.floor(Date.now() / 1000);
+    const streams = [
+      makeStream({ ratePerSecond: 100n, startTime: baseTime - 1000, endTime: baseTime + 1000 }),
+      makeStream({ ratePerSecond: 200n, startTime: baseTime - 1000, endTime: baseTime + 1000 }),
+    ];
+    const later = sumStreamedTotal(streams, baseTime + 100);
+    const atBase = sumStreamedTotal(streams, baseTime);
     expect(later - atBase).toBe((100n + 200n) * 100n);
   });
 });
